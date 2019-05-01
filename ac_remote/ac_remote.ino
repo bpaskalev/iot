@@ -1,77 +1,69 @@
+#include <PubSubClient.h>
+#include <DHTesp.h>
 #include <EEPROM.h>
 #include <WiFi.h>
-#include <PubSubClient.h>
 
-
-//todo init termomether
 //todo init IR transmitter
 
 const char* ssid = "bermuda";
-const char* password = "mypasswd";
-const char* mqtt_server = "192.168.88.103";
+const char* password = "c0ffeec0ff";
+const char* mqtt_server = "test.mosquitto.org";
 WiFiClient espClient;
 PubSubClient client(espClient);
 const char led = 12;
 long lastMsg = 0;
 char msg[20];
+long lastChk=0;
+int DHTpin=4;
+DHTesp dht;
+float tempToSet=23; //default value
 
-#define TEMP_TOPIC_CURRENT    "myschool/room1/temp_curr"
-#define LED_TOPIC     "smarthome/room1/led" /* 1=on, 0=off */
-#define TEMP_TOPIC_SET        "myschool/room1/temp_set"
-#define AC_COMMAND            "myschool/room1/command"
+#define TEMP_TOPIC_CURRENT    "lilian/room1/temp_curr"
+#define TEMP_TOPIC_SET        "lilian/room1/temp_set"
+#define HUM_TOPIC_CURRENT     "lilian/room1/hum_curr"
+#define AC_COMMAND            "lilian/room1/command"
 #define POWERON_COMMAND       "poweron"
 #define POWEROFF_COMMAND      "poweroff"
+#define SETTEMP_COMMAND       "settemp"
 
 
 
-
-int executeCommand(byte* command){
+int executeCommand(String command){
   Serial.print("Executing command: ");
-  Serial.println((char*)command);
-  switch((char*)command){
-    case POWERON_COMMAND:
-      //send poweron with temp todo
-      break;
-    case POWEROFF_COMMAND:
-      //send poweroff todo
-      break;
-    default:
-      Serial.print("Unknown command: ");
-      Serial.println((char*)command);
-      break;
+  Serial.println(command);
+
+  if(command==POWERON_COMMAND){
+    Serial.println(command);
+  }else if(command==POWEROFF_COMMAND){
+    Serial.println(command);
+  }else if(command==POWERON_COMMAND){
+    Serial.println(command);
+  }else if(command==SETTEMP_COMMAND){
+    Serial.println(command);
+  }else{
+    Serial.println("unknown command");
   }
 }
 
 
 void receivedCallback(char* topic, byte* payload, unsigned int length) {
+  String strTopic(topic);
+  String strPayload="";
+  int i;
+  for(i=0;i<length;i++){
+    strPayload.concat((char)payload[i]); 
+  }
+  strPayload[length]=0;
   Serial.print("Message received: ");
   Serial.println(topic);
-  String payloadStr =new String(payload,0);
-  Serial.print("payload: ");
-  Serial.println(payloadStr);
-  switch(topic){
-    case TEMP_TOPIC_SET:
-      // todo set the temp variable
-      break;
-    case AC_COMMAND:
-      //todo execute command
-      executeCommand(payloadStr);
-      break;
-    default:
-      Serial.print("unknown topic: ");
-      Serial.println(topic);
-      break;
+  if(strTopic==AC_COMMAND){
+    Serial.println("Executing command  on the ac ");
+    Serial.println(strPayload);
+    executeCommand(strPayload);
+  }else if(strTopic==TEMP_TOPIC_SET){
+    Serial.println("Setting value of tempToSet to"+strPayload);
+    tempToSet=strPayload.toFloat();
   }
-
-  
-  /* we got '1' -> on */
-  if ((char)payload[0] == '1') {
-    digitalWrite(led, HIGH); 
-  } else {
-    /* we got '0' -> on */
-    digitalWrite(led, LOW);
-  }
-
 }
 
 
@@ -96,16 +88,7 @@ void mqttconnect() {
     }
   }
 }
-
-
-
-void setup() {
-  // put your setup code here, to run once:
-  //todo setup WIFI
-  //todo connecto to mqtt
-  Serial.begin(115200);
-  // We start by connecting to a WiFi network
-  Serial.println();
+void wificonnect(){
   Serial.print("Connecting to ");
   Serial.println(ssid);
 
@@ -115,37 +98,57 @@ void setup() {
     delay(500);
     Serial.print(".");
   }
-  /* set led as output to control led on-off */
-  pinMode(led, OUTPUT);
-
   Serial.println("");
   Serial.println("WiFi connected");
   Serial.println("IP address: ");
   Serial.println(WiFi.localIP());
+  
+}
+
+
+void setup() {
+  // put your setup code here, to run once:
+  Serial.begin(9600);
+  Serial.println();
 
   /* configure the MQTT server with IPaddress and port */
   client.setServer(mqtt_server, 1883);
   /* this receivedCallback function will be invoked 
   when client received subscribed topic */
   client.setCallback(receivedCallback);
-  //todo init temp sensor
+  dht.setup(DHTpin, DHTesp::DHT22);
+  Serial.println("temperature and humidity sensor initialized");
 
 }
 
 void loop() {
+  
   // put your main code here, to run repeatedly:
+  if (WiFi.status() != WL_CONNECTED){
+    wificonnect();
+  }
   if (!client.connected()) {
     mqttconnect();
   }
   client.loop(); // check for messages periodically
   long now=millis();
+  float temp=0;
+  float hum=0;
+  TempAndHumidity tnh;
   if (now-lastChk>5000){
     lastChk=now;
     temp=0;//read temp todo
-    sprintf(msg,20,"%lf",temp);
-    client.publish(TEMP_TOPPIC_CURRENT,msg);
-    
-    
+    tnh=dht.getTempAndHumidity();
+    temp=tnh.temperature;
+    hum=tnh.humidity;
+    char charTemp[50]="";
+    sprintf(charTemp,"%2.2f",temp);
+    Serial.println("Temperature is "+String(charTemp));
+    client.publish((char *)TEMP_TOPIC_CURRENT,(char *)charTemp);
+    char charHum[50]="";
+    sprintf(charHum,"%3.2f",hum);
+    Serial.println("Humidity is "+String(charHum));
+    client.publish((char *)HUM_TOPIC_CURRENT,(char *)charHum);
   }
   delay(1000);
 }
